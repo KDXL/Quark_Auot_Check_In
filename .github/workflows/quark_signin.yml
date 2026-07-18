@@ -13,11 +13,11 @@ jobs:
       skip: ${{ steps.check.outputs.skip }}
     steps:
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: 恢复签到成功记录缓存
         id: cache-success-restore
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .last_success_date
           key: last-success-marker
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: 随机延迟（早上）
         if: github.event.schedule == '0 1 * * *'
@@ -85,23 +85,34 @@ jobs:
 
       - name: 保存成功记录到缓存
         if: success()
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .last_success_date
           key: last-success-marker
 
-      - name: 推送签到结果到微信
-        if: always()
+      - name: 签到成功推送
+        if: success()
         run: |
           curl -s -X POST "https://wxpusher.zjiecode.com/api/send/message" \
           -H "Content-Type: application/json" \
           -d '{
             "appToken": "${{ secrets.WX_PUSHER_APP_TOKEN }}",
-            "content": "夸克网盘每日签到执行完成",
+            "content": "✅夸克网盘签到执行成功",
             "contentType": 1,
             "uids": ["${{ secrets.WX_PUSHER_UID }}"]
           }'
 
+      - name: 签到失败推送
+        if: failure()
+        run: |
+          curl -s -X POST "https://wxpusher.zjiecode.com/api/send/message" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "appToken": "${{ secrets.WX_PUSHER_APP_TOKEN }}",
+            "content": "❌夸克网盘签到执行失败，请手动查看日志",
+            "contentType": 1,
+            "uids": ["${{ secrets.WX_PUSHER_UID }}"]
+          }'
 
       - name: 清理旧的工作流记录
         uses: Mattraks/delete-workflow-runs@main
