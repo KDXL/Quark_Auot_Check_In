@@ -1,4 +1,4 @@
-Name: Quark签到
+name: Quark签到
 
 on:
   schedule:
@@ -20,7 +20,6 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .last_success_date
-          # 使用前缀匹配恢复最新的一次缓存
           key: last-success-marker-${{ github.run_id }}
           restore-keys: |
             last-success-marker-
@@ -55,7 +54,6 @@ jobs:
       - name: 随机延迟（早上）
         if: github.event.schedule == '0 1 * * *'
         run: |
-          # 延迟 0 到 300 秒 (5分钟)
           delay=$((RANDOM % 300))
           echo "早上签到，延迟 $delay 秒后开始.."
           sleep $delay
@@ -75,10 +73,20 @@ jobs:
       - name: 安装依赖
         run: pip install requests
 
-      - name: 执行签到脚本
+      - name: 执行签到脚本并捕获输出
         env:
           COOKIE_QUARK: ${{ secrets.COOKIE_QUARK }}
-        run: python checkIn_Quark.py
+        run: |
+          # 运行 Python 脚本并将输出存储到日志文件
+          python checkIn_Quark.py > result.log 2>&1
+          
+          # 在终端打印，方便直接查看 GitHub Actions 的运行日志
+          cat result.log
+          
+          # 将多行文本安全写入环境变量
+          echo "SIGN_RESULT<<EOF" >> $GITHUB_ENV
+          cat result.log >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: 标记今天签到成功
         if: success()
@@ -92,20 +100,26 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .last_success_date
-          # 每次运行生成独一无二的 key 才能保存成功
           key: last-success-marker-${{ github.run_id }}
 
       - name: 签到成功推送
         if: success()
         run: |
+          # 使用 jq 组装 JSON 避免特殊符号导致 shell 报错
+          jq -n \
+            --arg token "${{ secrets.WX_PUSHER_APP_TOKEN }}" \
+            --arg content "✅ 夸克网盘签到成功\n\n$SIGN_RESULT" \
+            --arg uid "${{ secrets.WX_PUSHER_UID }}" \
+            '{
+              appToken: $token,
+              content: $content,
+              contentType: 1,
+              uids: [$uid]
+            }' > wxpusher_payload.json
+            
           curl -s -X POST "https://wxpusher.zjiecode.com/api/send/message" \
           -H "Content-Type: application/json" \
-          -d '{
-            "appToken": "${{ secrets.WX_PUSHER_APP_TOKEN }}",
-            "content": "✅夸克网盘签到执行成功",
-            "contentType": 1,
-            "uids": ["${{ secrets.WX_PUSHER_UID }}"]
-          }'
+          -d @wxpusher_payload.json
 
       - name: 签到失败推送
         if: failure()
@@ -114,7 +128,7 @@ jobs:
           -H "Content-Type: application/json" \
           -d '{
             "appToken": "${{ secrets.WX_PUSHER_APP_TOKEN }}",
-            "content": "❌夸克网盘签到执行失败，请手动查看日志",
+            "content": "❌ 夸克网盘签到执行失败，请手动查看日志",
             "contentType": 1,
             "uids": ["${{ secrets.WX_PUSHER_UID }}"]
           }'
@@ -125,5 +139,5 @@ jobs:
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
-          retain_days: 0   # 建议留几天日志查错，设置为 0 会全部清空
+          retain_days: 14
           keep_minimum_runs: 10
