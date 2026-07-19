@@ -2,14 +2,15 @@ name: Quark签到
 
 on:
   schedule:
-    - cron: '0 1 * * *'   # 北京时间 09:00 (UTC+1)
-    - cron: '0 5 * * *'   # 北京时间 13:00 (UTC+5)
-  workflow_dispatch:      # 允许手动触发
+    - cron: '0 1 * * *'   # 北京时间 09:00 (UTC+1) 第一次执行
+    - cron: '0 5 * * *'   # 北京时间 13:00 (UTC+5) 第二次兜底执行
+  workflow_dispatch:      # 允许在 GitHub 网页端手动触发
 
 jobs:
   check-if-already-signed:
     runs-on: ubuntu-latest
     outputs:
+      # 输出一个布尔值，告诉下一个 Job 要不要运行
       should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - name: 检出代码
@@ -20,11 +21,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .last_success_date
+          # 使用前缀匹配恢复最新的一次缓存
           key: last-success-marker-${{ github.run_id }}
           restore-keys: |
             last-success-marker-
 
-      - name: 判断是否已签到
+      - name: 判断今天是否已签到
         id: check
         run: |
           current_date=$(TZ='Asia/Shanghai' date '+%Y-%m-%d')
@@ -32,19 +34,20 @@ jobs:
 
           if [ -f .last_success_date ]; then
             last_date=$(cat .last_success_date)
-            echo "上次签到日期: $last_date"
+            echo "上次签到成功日期: $last_date"
             if [ "$last_date" = "$current_date" ]; then
-              echo "今天已成功签到，跳过执行。"
+              echo "今天已经成功签到，跳过后续步骤。"
               echo "should_run=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           fi
 
-          echo "今天尚未签到，继续执行。"
+          echo "今天尚未签到，继续执行签到流程。"
           echo "should_run=true" >> "$GITHUB_OUTPUT"
 
   sign-in:
     needs: check-if-already-signed
+    # 只有前一个 Job 判断今天还没签到过，才会执行这个 Job
     if: needs.check-if-already-signed.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -54,36 +57,38 @@ jobs:
       - name: 随机延迟（早上）
         if: github.event.schedule == '0 1 * * *'
         run: |
+          # 延迟 0 到 300 秒 (5分钟)，防止每天同一时间签到触发风控
           delay=$((RANDOM % 300))
           echo "早上签到，延迟 $delay 秒后开始.."
           sleep $delay
 
-      - name: 随机延迟（下午/手动触发）
+      - name: 随机延迟（下午兜底 / 手动触发）
         if: github.event.schedule == '0 5 * * *' || github.event_name == 'workflow_dispatch'
         run: |
+          # 下午兜底或手动执行时，延迟时间短一点 (0 到 30 秒)
           delay=$((RANDOM % 30))
           echo "下午兜底或手动触发，延迟 $delay 秒后开始.."
           sleep $delay
 
-      - name: 设置Python环境
+      - name: 设置 Python 环境
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
-      - name: 安装依赖
+      - name: 安装依赖包
         run: pip install requests
 
-      - name: 执行签到脚本并捕获输出
+      - name: 执行签到脚本并捕获日志
         env:
           COOKIE_QUARK: ${{ secrets.COOKIE_QUARK }}
         run: |
-          # 运行 Python 脚本并将输出存储到日志文件
+          # 运行 Python 脚本并将输出存储到 result.log
           python checkIn_Quark.py > result.log 2>&1
           
-          # 在终端打印，方便直接查看 GitHub Actions 的运行日志
+          # 在终端打印，方便你在 GitHub Actions 控制台里查看运行日志
           cat result.log
           
-          # 将多行文本安全写入环境变量
+          # 将多行文本安全写入环境变量 SIGN_RESULT，供后面的推送步骤使用
           echo "SIGN_RESULT<<EOF" >> $GITHUB_ENV
           cat result.log >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -93,22 +98,29 @@ jobs:
         run: |
           date_str=$(TZ='Asia/Shanghai' date '+%Y-%m-%d')
           echo "$date_str" > .last_success_date
-          echo "已记录成功签到日期: $date_str"
+          echo "已将 [$date_str] 记录为成功签到日期"
 
       - name: 保存成功记录到缓存
         if: success()
         uses: actions/cache@v4
         with:
           path: .last_success_date
+          # 每次运行生成独一无二的 key，确保缓存能被成功保存
           key: last-success-marker-${{ github.run_id }}
 
       - name: 签到成功推送
+        # 只要成功就推送。由于缓存的控制，一天最多只会推送一次成功通知。
         if: success()
         run: |
-          # 使用 jq 组装 JSON 避免特殊符号导致 shell 报错
+          # 使用真实的物理换行定义内容，解决 \n 变成纯文本的问题
+          PUSHER_CONTENT="✅ 夸克网盘签到成功
+
+          $SIGN_RESULT"
+          
+          # 使用 jq 组装 JSON，防止 Python 输出的特殊符号导致请求报错
           jq -n \
             --arg token "${{ secrets.WX_PUSHER_APP_TOKEN }}" \
-            --arg content "✅ 夸克网盘签到成功\n\n$SIGN_RESULT" \
+            --arg content "$PUSHER_CONTENT" \
             --arg uid "${{ secrets.WX_PUSHER_UID }}" \
             '{
               appToken: $token,
@@ -128,7 +140,7 @@ jobs:
           -H "Content-Type: application/json" \
           -d '{
             "appToken": "${{ secrets.WX_PUSHER_APP_TOKEN }}",
-            "content": "❌ 夸克网盘签到执行失败，请手动查看日志",
+            "content": "❌ 夸克网盘签到执行失败，请前往 GitHub 手动查看日志查找原因",
             "contentType": 1,
             "uids": ["${{ secrets.WX_PUSHER_UID }}"]
           }'
@@ -139,5 +151,5 @@ jobs:
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
-          retain_days: 14
+          retain_days: 0   # 保留 14 天的日志用于排错，超过的自动删除
           keep_minimum_runs: 10
