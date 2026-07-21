@@ -20,11 +20,10 @@ jobs:
         run: echo "today=$(TZ='Asia/Shanghai' date '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
 
       - name: 恢复签到成功记录缓存
-        id: cache-success-restore
-        uses: actions/cache@v4
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: .last_success_date
-          # 使用带有当天的动态 Key
           key: quark-sign-${{ steps.date.outputs.today }}
 
       - name: 判断是否已签到
@@ -37,7 +36,7 @@ jobs:
             last_date=$(cat .last_success_date)
             echo "上次签到日期: $last_date"
             if [ "$last_date" = "$current_date" ]; then
-              echo "今天已成功签到，跳过执行。"
+              echo "今天已成功签到，跳过后续执行。"
               echo "skip=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -97,9 +96,9 @@ jobs:
           echo "$date_str" > .last_success_date
           echo "已记录成功签到日期: $date_str"
 
-      - name: 保存成功记录到缓存
+      - name: 强制保存成功记录到缓存
         if: success()
-        uses: actions/cache@v4
+        uses: actions/cache/save@v4
         with:
           path: .last_success_date
           key: quark-sign-${{ steps.date.outputs.today }}
