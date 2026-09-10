@@ -107,7 +107,7 @@ jobs:
             --arg uid "${{ secrets.WX_PUSHER_UID }}" \
             '{
               appToken: $token,
-              content: "✅ 夸克网盘签到成功\n" + $content,
+              content: "✅ 夸克网盘签到成功\n\($content)",
               contentType: 1,
               uids: [$uid]
             }' > wxpusher_payload.json
@@ -125,7 +125,7 @@ jobs:
             --arg uid "${{ secrets.WX_PUSHER_UID }}" \
             '{
               appToken: $token,
-              content: "❌ 夸克网盘签到执行失败\n日志内容：\n" + $content,
+              content: "❌ 夸克网盘签到执行失败\n日志内容：\n\($content)",
               contentType: 1,
               uids: [$uid]
             }' > wxpusher_payload.json
