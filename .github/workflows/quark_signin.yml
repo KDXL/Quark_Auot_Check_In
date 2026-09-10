@@ -63,6 +63,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
       - name: 执行签到脚本
+        id: run_script
         if: steps.cache-success.outputs.cache-hit != 'true'
         env:
           COOKIE_QUARK: ${{ secrets.COOKIE_QUARK }}
@@ -72,32 +73,41 @@ jobs:
           echo "SIGN_RESULT<<EOF" >> $GITHUB_ENV
           cat result.log >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
-          if grep -q "签到失败" result.log; then exit 1; fi
+          # 判断是否存在账号失败
+          if grep -qE "HTTP 401|签到失败" result.log; then
+            echo "HAS_FAILURE=true" >> $GITHUB_ENV
+            exit 1
+          else
+            echo "HAS_FAILURE=false" >> $GITHUB_ENV
+          fi
 
-      - name: 生成今日成功标记
-        if: success() && steps.cache-success.outputs.cache-hit != 'true'
+      - name: 生成今日成功标记（全部账号成功才执行）
+        if: success() && steps.cache-success.outputs.cache-hit != 'true' && env.HAS_FAILURE == 'false'
         run: |
           mkdir -p .cache/quark-signin
           echo "${{ steps.date.outputs.today }}" > .cache/quark-signin/success
 
-      - name: 保存今日成功标记
-        if: success() && steps.cache-success.outputs.cache-hit != 'true'
+      - name: 保存今日成功标记（全部账号成功才执行）
+        if: success() && steps.cache-success.outputs.cache-hit != 'true' && env.HAS_FAILURE == 'false'
         uses: actions/cache/save@v6
         with:
           path: .cache/quark-signin
           key: quark-signed-${{ steps.date.outputs.today }}
 
+      - name: 准备推送内容文件
+        run: |
+          echo "$SIGN_RESULT" > push_content.txt
+
       - name: 签到成功推送
         if: success()
         run: |
-          PUSHER_CONTENT="✅ 夸克网盘签到成功\n$SIGN_RESULT"
           jq -n \
+            --rawfile content push_content.txt \
             --arg token "${{ secrets.WX_PUSHER_APP_TOKEN }}" \
-            --arg content "$PUSHER_CONTENT" \
             --arg uid "${{ secrets.WX_PUSHER_UID }}" \
             '{
               appToken: $token,
-              content: $content,
+              content: "✅ 夸克网盘签到成功\n" + $content,
               contentType: 1,
               uids: [$uid]
             }' > wxpusher_payload.json
@@ -109,14 +119,13 @@ jobs:
       - name: 签到失败推送
         if: failure()
         run: |
-          PUSHER_CONTENT="❌ 夸克网盘签到执行失败\n日志内容：\n$SIGN_RESULT"
           jq -n \
+            --rawfile content push_content.txt \
             --arg token "${{ secrets.WX_PUSHER_APP_TOKEN }}" \
-            --arg content "$PUSHER_CONTENT" \
             --arg uid "${{ secrets.WX_PUSHER_UID }}" \
             '{
               appToken: $token,
-              content: $content,
+              content: "❌ 夸克网盘签到执行失败\n日志内容：\n" + $content,
               contentType: 1,
               uids: [$uid]
             }' > wxpusher_payload.json
