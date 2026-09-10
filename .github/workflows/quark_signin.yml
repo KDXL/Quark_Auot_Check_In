@@ -111,12 +111,7 @@ jobs:
       - name: 签到失败推送
         if: failure()
         run: |
-          PUSHER_CONTENT=$(cat <<EOF
-❌ 夸克网盘签到执行失败
-日志内容：
-$SIGN_RESULT
-EOF
-          )
+          PUSHER_CONTENT="❌ 夸克网盘签到执行失败\n日志内容：\n$SIGN_RESULT"
           jq -n \
             --arg token "${{ secrets.WX_PUSHER_APP_TOKEN }}" \
             --arg content "$PUSHER_CONTENT" \
