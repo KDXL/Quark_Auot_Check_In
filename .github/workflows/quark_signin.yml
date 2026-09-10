@@ -67,11 +67,12 @@ jobs:
         env:
           COOKIE_QUARK: ${{ secrets.COOKIE_QUARK }}
         run: |
-          python checkIn_Quark.py > result.log 2>&1
+          python checkIn_Quark.py > result.log 2>&1 || true
           cat result.log
           echo "SIGN_RESULT<<EOF" >> $GITHUB_ENV
           cat result.log >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
+          if grep -q "签到失败" result.log; then exit 1; fi
 
       - name: 生成今日成功标记
         if: success() && steps.cache-success.outputs.cache-hit != 'true'
@@ -89,10 +90,7 @@ jobs:
       - name: 签到成功推送
         if: success()
         run: |
-          PUSHER_CONTENT="✅ 夸克网盘签到成功
-
-          $SIGN_RESULT"
-
+          PUSHER_CONTENT="✅ 夸克网盘签到成功\n$SIGN_RESULT"
           jq -n \
             --arg token "${{ secrets.WX_PUSHER_APP_TOKEN }}" \
             --arg content "$PUSHER_CONTENT" \
