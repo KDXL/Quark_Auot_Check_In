@@ -98,8 +98,8 @@ jobs:
       - name: 签到成功推送
         if: success() && steps.cache-success.outputs.cache-hit != 'true'
         run: |
-          export MSG="✅ 夸克网盘签到成功
-$SIGN_RESULT"
+          MSG=$(printf '✅ 夸克网盘签到成功\n%s' "$SIGN_RESULT")
+          export MSG
           python - <<'END' > wxpusher_payload.json
 import json, os
 payload = {
@@ -120,9 +120,8 @@ END
       - name: 签到失败推送
         if: failure() && steps.cache-success.outputs.cache-hit != 'true'
         run: |
-          export MSG="❌ 夸克网盘签到执行失败
-日志内容：
-$SIGN_RESULT"
+          MSG=$(printf '❌ 夸克网盘签到执行失败\n日志内容：\n%s' "$SIGN_RESULT")
+          export MSG
           python - <<'END' > wxpusher_payload.json
 import json, os
 payload = {
