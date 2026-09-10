@@ -98,7 +98,7 @@ jobs:
           print(json.dumps(payload, ensure_ascii=False))
           EOF
           python3 build_payload.py > wxpusher_payload.json
-          curl -s -X POST "https://shturl.cc/H42lpf0Sg6O9yeOpkyiJGff5dchMp77m7lBc" \
+          curl -s -X POST "https://wxpusher.zjiecode.com/api/send/message" \
           -H "Content-Type: application/json" \
           -d @wxpusher_payload.json
         env:
@@ -121,7 +121,7 @@ jobs:
           print(json.dumps(payload, ensure_ascii=False))
           EOF
           python3 build_payload.py > wxpusher_payload.json
-          curl -s -X POST "https://shturl.cc/H42lpf0Sg6O9yeOpkyiJGff5dchMp77m7lBc" \
+          curl -s -X POST "https://wxpusher.zjiecode.com/api/send/message" \
           -H "Content-Type: application/json" \
           -d @wxpusher_payload.json
         env:
