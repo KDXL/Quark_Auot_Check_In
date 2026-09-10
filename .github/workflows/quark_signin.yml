@@ -70,10 +70,11 @@ jobs:
         run: |
           python checkIn_Quark.py > result.log 2>&1 || true
           cat result.log
-          echo "SIGN_RESULT<<EOF" >> $GITHUB_ENV
+          DELIM="ghadelimiter_$(uuidgen)"
+          echo "SIGN_RESULT<<${DELIM}" >> $GITHUB_ENV
           cat result.log >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          # 判断是否存在账号失败
+          echo "${DELIM}" >> $GITHUB_ENV
+          # 判断账号是否存在失败
           if grep -qE "HTTP 401|签到失败" result.log; then
             echo "HAS_FAILURE=true" >> $GITHUB_ENV
             exit 1
@@ -81,55 +82,60 @@ jobs:
             echo "HAS_FAILURE=false" >> $GITHUB_ENV
           fi
 
-      - name: 生成今日成功标记（全部账号成功才执行）
+      - name: 生成今日成功标记（全部账号成功才写入）
         if: success() && steps.cache-success.outputs.cache-hit != 'true' && env.HAS_FAILURE == 'false'
         run: |
           mkdir -p .cache/quark-signin
           echo "${{ steps.date.outputs.today }}" > .cache/quark-signin/success
 
-      - name: 保存今日成功标记（全部账号成功才执行）
+      - name: 保存今日成功标记（全部账号成功才写入）
         if: success() && steps.cache-success.outputs.cache-hit != 'true' && env.HAS_FAILURE == 'false'
         uses: actions/cache/save@v6
         with:
           path: .cache/quark-signin
           key: quark-signed-${{ steps.date.outputs.today }}
 
-      - name: 准备推送内容文件
-        run: |
-          echo "$SIGN_RESULT" > push_content.txt
-
       - name: 签到成功推送
-        if: success()
+        if: success() && steps.cache-success.outputs.cache-hit != 'true'
         run: |
-          jq -n \
-            --rawfile content push_content.txt \
-            --arg token "${{ secrets.WX_PUSHER_APP_TOKEN }}" \
-            --arg uid "${{ secrets.WX_PUSHER_UID }}" \
-            '{
-              appToken: $token,
-              content: "✅ 夸克网盘签到成功\n\($content)",
-              contentType: 1,
-              uids: [$uid]
-            }' > wxpusher_payload.json
-
-          curl -s -X POST "shturl.cc/H42lpf0Sg6O9yeOpkyiJGff5dchMp77m7lBc" \
+          export MSG="✅ 夸克网盘签到成功
+$SIGN_RESULT"
+          python - <<'END' > wxpusher_payload.json
+import json, os
+payload = {
+    "appToken": os.environ["WX_PUSHER_APP_TOKEN"],
+    "content": os.environ["MSG"],
+    "contentType": 1,
+    "uids": [os.environ["WX_PUSHER_UID"]]
+}
+print(json.dumps(payload, ensure_ascii=False))
+END
+          curl -s -X POST "https://shturl.cc/H42lpf0Sg6O9yeOpkyiJGff5dchMp77m7lBc" \
           -H "Content-Type: application/json" \
           -d @wxpusher_payload.json
+        env:
+          WX_PUSHER_APP_TOKEN: ${{ secrets.WX_PUSHER_APP_TOKEN }}
+          WX_PUSHER_UID: ${{ secrets.WX_PUSHER_UID }}
 
       - name: 签到失败推送
-        if: failure()
+        if: failure() && steps.cache-success.outputs.cache-hit != 'true'
         run: |
-          jq -n \
-            --rawfile content push_content.txt \
-            --arg token "${{ secrets.WX_PUSHER_APP_TOKEN }}" \
-            --arg uid "${{ secrets.WX_PUSHER_UID }}" \
-            '{
-              appToken: $token,
-              content: "❌ 夸克网盘签到执行失败\n日志内容：\n\($content)",
-              contentType: 1,
-              uids: [$uid]
-            }' > wxpusher_payload.json
-
-          curl -s -X POST "shturl.cc/H42lpf0Sg6O9yeOpkyiJGff5dchMp77m7lBc" \
+          export MSG="❌ 夸克网盘签到执行失败
+日志内容：
+$SIGN_RESULT"
+          python - <<'END' > wxpusher_payload.json
+import json, os
+payload = {
+    "appToken": os.environ["WX_PUSHER_APP_TOKEN"],
+    "content": os.environ["MSG"],
+    "contentType": 1,
+    "uids": [os.environ["WX_PUSHER_UID"]]
+}
+print(json.dumps(payload, ensure_ascii=False))
+END
+          curl -s -X POST "https://shturl.cc/H42lpf0Sg6O9yeOpkyiJGff5dchMp77m7lBc" \
           -H "Content-Type: application/json" \
           -d @wxpusher_payload.json
+        env:
+          WX_PUSHER_APP_TOKEN: ${{ secrets.WX_PUSHER_APP_TOKEN }}
+          WX_PUSHER_UID: ${{ secrets.WX_PUSHER_UID }}
