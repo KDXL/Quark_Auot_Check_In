@@ -38,19 +38,6 @@ jobs:
         if: steps.cache-success.outputs.cache-hit != 'true'
         uses: actions/checkout@v7
 
-      - name: 随机延迟
-        if: steps.cache-success.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            max_delay=10
-          else
-            max_delay=60
-          fi
-          delay=$((RANDOM % (max_delay + 1)))
-          echo "随机延迟 ${delay} 秒后开始执行。"
-          sleep "$delay"
-
       - name: 设置 Python 环境
         if: steps.cache-success.outputs.cache-hit != 'true'
         uses: actions/setup-python@v7
@@ -100,16 +87,17 @@ jobs:
         run: |
           MSG=$(printf '✅ 夸克网盘签到成功\n%s' "$SIGN_RESULT")
           export MSG
-          python - <<'END' > wxpusher_payload.json
-import json, os
-payload = {
-    "appToken": os.environ["WX_PUSHER_APP_TOKEN"],
-    "content": os.environ["MSG"],
-    "contentType": 1,
-    "uids": [os.environ["WX_PUSHER_UID"]]
-}
-print(json.dumps(payload, ensure_ascii=False))
-END
+          cat > build_payload.py <<'EOF'
+          import json, os
+          payload = {
+              "appToken": os.environ["WX_PUSHER_APP_TOKEN"],
+              "content": os.environ["MSG"],
+              "contentType": 1,
+              "uids": [os.environ["WX_PUSHER_UID"]]
+          }
+          print(json.dumps(payload, ensure_ascii=False))
+          EOF
+          python3 build_payload.py > wxpusher_payload.json
           curl -s -X POST "https://shturl.cc/H42lpf0Sg6O9yeOpkyiJGff5dchMp77m7lBc" \
           -H "Content-Type: application/json" \
           -d @wxpusher_payload.json
@@ -122,16 +110,17 @@ END
         run: |
           MSG=$(printf '❌ 夸克网盘签到执行失败\n日志内容：\n%s' "$SIGN_RESULT")
           export MSG
-          python - <<'END' > wxpusher_payload.json
-import json, os
-payload = {
-    "appToken": os.environ["WX_PUSHER_APP_TOKEN"],
-    "content": os.environ["MSG"],
-    "contentType": 1,
-    "uids": [os.environ["WX_PUSHER_UID"]]
-}
-print(json.dumps(payload, ensure_ascii=False))
-END
+          cat > build_payload.py <<'EOF'
+          import json, os
+          payload = {
+              "appToken": os.environ["WX_PUSHER_APP_TOKEN"],
+              "content": os.environ["MSG"],
+              "contentType": 1,
+              "uids": [os.environ["WX_PUSHER_UID"]]
+          }
+          print(json.dumps(payload, ensure_ascii=False))
+          EOF
+          python3 build_payload.py > wxpusher_payload.json
           curl -s -X POST "https://shturl.cc/H42lpf0Sg6O9yeOpkyiJGff5dchMp77m7lBc" \
           -H "Content-Type: application/json" \
           -d @wxpusher_payload.json
