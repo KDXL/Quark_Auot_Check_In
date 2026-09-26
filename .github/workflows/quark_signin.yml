@@ -61,10 +61,9 @@ jobs:
           echo "SIGN_RESULT<<${DELIM}" >> $GITHUB_ENV
           cat result.log >> $GITHUB_ENV
           echo "${DELIM}" >> $GITHUB_ENV
-          # 判断账号是否存在失败
-          if grep -qE "HTTP 401|签到失败" result.log; then
+          # 判断账号是否存在失败：401、签到失败、接口超时、日志统计失败>0
+          if grep -qE "HTTP 401|签到失败|请求夸克接口超时" result.log || grep -E "成功 [0-9]+，失败 ([1-9])" result.log; then
             echo "HAS_FAILURE=true" >> $GITHUB_ENV
-            exit 1
           else
             echo "HAS_FAILURE=false" >> $GITHUB_ENV
           fi
@@ -83,7 +82,7 @@ jobs:
           key: quark-signed-${{ steps.date.outputs.today }}
 
       - name: 签到成功推送
-        if: success() && steps.cache-success.outputs.cache-hit != 'true'
+        if: steps.cache-success.outputs.cache-hit != 'true' && env.HAS_FAILURE == 'false'
         run: |
           MSG=$(printf '✅ 夸克网盘签到成功\n%s' "$SIGN_RESULT")
           export MSG
@@ -106,9 +105,9 @@ jobs:
           WX_PUSHER_UID: ${{ secrets.WX_PUSHER_UID }}
 
       - name: 签到失败推送
-        if: failure() && steps.cache-success.outputs.cache-hit != 'true'
+        if: steps.cache-success.outputs.cache-hit != 'true' && env.HAS_FAILURE == 'true'
         run: |
-          MSG=$(printf '❌ 夸克网盘签到执行失败\n日志内容：\n%s' "$SIGN_RESULT")
+          MSG=$(printf '⚠️ 夸克网盘部分账号签到失败\n日志内容：\n%s' "$SIGN_RESULT")
           export MSG
           cat > build_payload.py <<'EOF'
           import json, os
